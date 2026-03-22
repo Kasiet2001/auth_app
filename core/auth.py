@@ -5,8 +5,12 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.sql.coercions import RoleImpl
 
-from models.models import User
+from models.models import (
+    Role,
+    User,
+)
 from core.config import SECRET_KEY, ALGORITHM
 from db.depends import get_async_db
 
@@ -49,10 +53,18 @@ async def get_current_user(
         )
     except jwt.PyJWTError:
         raise credentials_exception
-    result = await db.scalars(
+    result = await db.execute(
         select(User).where(User.email == email, User.is_active == True)
     )
-    user = result.first()
+    user = result.scalar_one_or_none()
     if user is None:
         raise credentials_exception
     return user
+
+
+async def get_admin_or_superuser(current_user: User = Depends(get_current_user)):
+    if current_user.role not in [Role.ADMIN, Role.SUPERUSER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not an admin"
+        )
+    return current_user

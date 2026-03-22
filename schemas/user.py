@@ -1,5 +1,7 @@
 from pydantic import BaseModel, EmailStr,Field, model_validator
 
+from models.models import Role
+
 
 class UserCreate(BaseModel):
     first_name: str = Field(min_length=2, max_length=100)
@@ -17,11 +19,13 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     first_name: str | None = Field(default=None, min_length=2, max_length=100)
     last_name: str | None = Field(default=None, min_length=2, max_length=100)
-    email: EmailStr | None
-    password: str | None = Field(default=None, min_length=8)
+    email: EmailStr | None = None
 
 class UserResponse(BaseModel):
     id: int
     first_name: str
     last_name: str
     email: EmailStr
+
+class UpdateUserRole(BaseModel):
+    role: Role
