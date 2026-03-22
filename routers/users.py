@@ -8,6 +8,7 @@ from core.auth import (
     get_admin_or_superuser,
     get_current_user,
     hash_password,
+    oauth2_scheme,
     verify_password,
 )
 from db.depends import get_async_db
@@ -19,6 +20,8 @@ from schemas.user import (
     UserResponse,
     UserUpdate,
 )
+
+token_blacklist: set[str] = set()
 
 router = APIRouter()
 
@@ -67,21 +70,34 @@ async def login(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+@router.post("/logout")
+async def logout(
+    current_user: User = Depends(get_current_user),
+    token: str = Depends(oauth2_scheme)
+):
+    token_blacklist.add(token)
+    return {"message": "Logged out"}
+
 @router.patch("/users/{user_id}", response_model=UserResponse)
 async def update_user(
     user_id: int,
     data: UserUpdate,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_self())
 ):
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if current_user.id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+    if data.email is not None:
+        existing_email = await db.scalar(
+            select(User).where(
+                User.email == data.email,
+                User.is_active == True,
+                User.id != user_id
+            )
         )
+        if existing_email:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
     data_dict = data.model_dump(exclude_unset=True)
     for key, value in data_dict.items():
         setattr(user, key, value)
@@ -95,7 +111,7 @@ async def update_user_role(
     user_id: int,
     data: UpdateUserRole,
     db: AsyncSession = Depends(get_async_db),
-    user: User = Depends(get_admin_or_superuser)
+    _: User = Depends(get_admin_or_superuser)
 ):
     user = await db.get(User, user_id)
     if not user:
@@ -110,7 +126,7 @@ async def update_user_role(
 async def delete_user(
     user_id: int,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = require_self()
+    current_user: User = Depends(require_self())
 ):
     user = await db.get(User, user_id)
 

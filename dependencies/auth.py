@@ -13,4 +13,4 @@ def require_self():
             raise HTTPException(status_code=403)
         return current_user
 
-    return Depends(_require_self)
+    return _require_self
